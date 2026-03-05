@@ -473,6 +473,30 @@
       }
     }
 
+    /* ---- FPS COUNTER ---- */
+    #dluss_fps {
+      position: absolute;
+      bottom: 10px;
+      right: 10px;
+      background: rgba(13, 13, 15, 0.75);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      border-radius: 6px;
+      padding: 3px 9px;
+      font-size: 10px;
+      font-family: 'JetBrains Mono', monospace;
+      font-weight: 600;
+      color: #22c55e;
+      z-index: 150;
+      backdrop-filter: blur(8px);
+      letter-spacing: 0.5px;
+      transition: color 0.5s;
+      display: none;
+    }
+
+    #dluss_fps.visible {
+      display: block;
+    }
+
     /* Hide default Potree elements we override */
     #potree_sidebar_container {
       z-index: 100;
@@ -648,6 +672,11 @@
   <div id="tour_indicator">▶ Tour in corso...</div>
 
   <!-- ============================================================
+     FPS COUNTER (Sezione 7 — Performance)
+============================================================ -->
+  <div id="dluss_fps"></div>
+
+  <!-- ============================================================
      INFO BAR
 ============================================================ -->
   <div id="dluss_infobar">
@@ -757,6 +786,13 @@
       let tourAnimation = null;
       let isTourPlaying = false;
 
+      // Sezione 7 — Performance monitoring
+      let fpsLastCount = 0;
+      let fpsLastTime = performance.now();
+      let currentFPS = 60;
+      let lastAdaptTime = 0;
+      let manualQualitySet = false;
+
       // ----------------------------------------------------------
       // Helpers UI
       // ----------------------------------------------------------
@@ -855,6 +891,9 @@
 
           viewer.scene.addPointCloud(pointcloud);
           viewer.fitToScreen();
+
+          // FPS monitor + auto-adaptive quality (Sezione 7)
+          startFPSMonitor();
 
           // Nascondi loading
           const overlay = el("dluss_loading");
@@ -1064,6 +1103,7 @@
       // 6. TOOLBAR — BUDGET QUALITÀ
       // ----------------------------------------------------------
       el("btn_quality_high").onclick = () => {
+        manualQualitySet = true;
         setActiveToolBtn("btn_quality_high");
         viewer.setPointBudget(3_000_000);
         viewer.setEDLEnabled(true);
@@ -1074,6 +1114,7 @@
       };
 
       el("btn_quality_med").onclick = () => {
+        manualQualitySet = true;
         setActiveToolBtn("btn_quality_med");
         viewer.setPointBudget(1_500_000);
         viewer.setEDLEnabled(true);
@@ -1082,6 +1123,7 @@
       };
 
       el("btn_quality_low").onclick = () => {
+        manualQualitySet = true;
         setActiveToolBtn("btn_quality_low");
         viewer.setPointBudget(400_000);
         viewer.setEDLEnabled(false);
@@ -1321,6 +1363,49 @@
 
       // Invia ping al sito host quando il viewer è pronto
       window.parent.postMessage({ type: "dluss_viewer_ready" }, "*");
+
+      // ----------------------------------------------------------
+      // 15. PERFORMANCE — FPS monitor + auto-adaptive budget (Sezione 7)
+      // Soglie da tabella piano operativo:
+      //   ≥ 30 FPS → verde (buono)
+      //   20–29 FPS → giallo (accettabile)
+      //   < 20 FPS → rosso + auto-riduzione budget
+      // Auto-adapt disabilitato se l'utente ha scelto manualmente un preset.
+      // ----------------------------------------------------------
+      function autoAdaptQuality(fps) {
+        if (manualQualitySet) return;
+        const now = performance.now();
+        if (now - lastAdaptTime < 5000) return; // cooldown 5s tra adattamenti
+
+        const budget = viewer.getPointBudget();
+        if (fps < 15 && budget > 400_000) {
+          const next = Math.max(400_000, Math.round(budget * 0.6));
+          viewer.setPointBudget(next);
+          lastAdaptTime = now;
+          updateInfoBar(`⚡ Auto-ottimizzazione: budget → ${(next / 1_000_000).toFixed(1)}M punti (FPS rilevati: ${fps})`);
+        }
+      }
+
+      function startFPSMonitor() {
+        el("dluss_fps").classList.add("visible");
+        setInterval(() => {
+          if (!viewer?.renderer) return;
+          const now = performance.now();
+          const elapsed = now - fpsLastTime;
+          const frames = viewer.renderer.info.render.frame - fpsLastCount;
+          currentFPS = elapsed > 0 ? Math.round(frames * 1000 / elapsed) : 0;
+          fpsLastCount = viewer.renderer.info.render.frame;
+          fpsLastTime = now;
+
+          const fpsEl = el("dluss_fps");
+          fpsEl.textContent = `${currentFPS} FPS`;
+          fpsEl.style.color = currentFPS >= 30 ? '#22c55e'
+            : currentFPS >= 20 ? '#f5d300'
+            : '#ef4444';
+
+          autoAdaptQuality(currentFPS);
+        }, 1000);
+      }
 
     }); // end window.load
   </script>
