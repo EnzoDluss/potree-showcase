@@ -1,0 +1,1330 @@
+<!DOCTYPE html>
+<html lang="it">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>3DLUss — Digital Twin Viewer</title>
+  <meta name="description" content="Viewer professionale nuvole di punti 3DLUss — Gemelli Digitali e Rilievi LiDAR">
+
+  <!-- Stili Potree (percorso relativo rispetto a questa cartella viewer/) -->
+  <link rel="stylesheet" href="libs/potree/potree.css">
+  <link rel="stylesheet" href="libs/jquery-ui/jquery-ui.min.css">
+  <link rel="stylesheet" href="libs/spectrum/spectrum.css">
+
+  <style>
+    /* ============================================================
+       3DLUss Cyber Premium Design System — Viewer Customization
+       Colori allineati a globals.css del sito principale:
+       - Background: #0d0d0f
+       - Gold: #f5d300
+       - Cyan: #06b6d4
+       - Border: #2a2a38
+    ============================================================ */
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      background: #0d0d0f;
+      margin: 0;
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      color: #f0f0f5;
+      overflow: hidden;
+    }
+
+    /* ---- LOADING OVERLAY ---- */
+    #dluss_loading {
+      position: fixed;
+      inset: 0;
+      background: linear-gradient(135deg, #0d0d0f 0%, #14141a 50%, #0d0d0f 100%);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      z-index: 9999;
+      transition: opacity 0.6s ease;
+    }
+
+    #dluss_loading.hidden {
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .loading-brand {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      margin-bottom: 40px;
+    }
+
+    .loading-logo-box {
+      width: 52px;
+      height: 52px;
+      border: 2px solid rgba(245, 211, 0, 0.6);
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 22px;
+      background: rgba(245, 211, 0, 0.05);
+      box-shadow: 0 0 20px rgba(245, 211, 0, 0.3);
+      animation: brand-pulse 2s ease-in-out infinite;
+    }
+
+    @keyframes brand-pulse {
+
+      0%,
+      100% {
+        box-shadow: 0 0 10px rgba(245, 211, 0, 0.3);
+        border-color: rgba(245, 211, 0, 0.4);
+      }
+
+      50% {
+        box-shadow: 0 0 30px rgba(245, 211, 0, 0.7);
+        border-color: rgba(245, 211, 0, 0.9);
+      }
+    }
+
+    .loading-brand-text {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .loading-brand-name {
+      font-size: 26px;
+      font-weight: 800;
+      letter-spacing: -0.5px;
+      color: #fff;
+    }
+
+    .loading-brand-sub {
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 3px;
+      text-transform: uppercase;
+      color: rgba(245, 211, 0, 0.7);
+    }
+
+    .loading-spinner-wrap {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 20px;
+    }
+
+    .loading-spinner {
+      width: 56px;
+      height: 56px;
+      border: 3px solid rgba(6, 182, 212, 0.15);
+      border-top-color: #06b6d4;
+      border-radius: 50%;
+      animation: spin 0.9s linear infinite;
+    }
+
+    @keyframes spin {
+      to {
+        transform: rotate(360deg);
+      }
+    }
+
+    .loading-text {
+      color: rgba(240, 240, 245, 0.55);
+      font-size: 13px;
+      letter-spacing: 1px;
+    }
+
+    .loading-bar-wrap {
+      width: 240px;
+      height: 3px;
+      background: rgba(255, 255, 255, 0.06);
+      border-radius: 3px;
+      overflow: hidden;
+      margin-top: 4px;
+    }
+
+    .loading-bar {
+      height: 100%;
+      background: linear-gradient(90deg, #06b6d4, #f5d300);
+      border-radius: 3px;
+      width: 0%;
+      animation: prog 2.5s ease forwards;
+    }
+
+    @keyframes prog {
+      0% {
+        width: 0%
+      }
+
+      60% {
+        width: 75%
+      }
+
+      100% {
+        width: 100%
+      }
+    }
+
+    /* ---- POTREE CONTAINER ---- */
+    .potree_container {
+      position: absolute;
+      width: 100%;
+      height: 100%;
+      left: 0;
+      top: 0;
+    }
+
+    /* ---- HEADER BAR ---- */
+    #dluss_header {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 48px;
+      background: rgba(13, 13, 15, 0.85);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid rgba(245, 211, 0, 0.12);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 16px;
+      z-index: 200;
+    }
+
+    .header-brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .header-logo {
+      width: 28px;
+      height: 28px;
+      border: 1px solid rgba(245, 211, 0, 0.5);
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 13px;
+      background: rgba(245, 211, 0, 0.05);
+      box-shadow: 0 0 8px rgba(245, 211, 0, 0.2);
+    }
+
+    .header-title {
+      font-size: 13px;
+      font-weight: 700;
+      color: #fff;
+      letter-spacing: 0.3px;
+    }
+
+    .header-subtitle {
+      font-size: 10px;
+      color: rgba(245, 211, 0, 0.6);
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      margin-left: 2px;
+    }
+
+    #header_project_name {
+      font-size: 12px;
+      color: rgba(6, 182, 212, 0.8);
+      font-style: italic;
+      background: rgba(6, 182, 212, 0.05);
+      border: 1px solid rgba(6, 182, 212, 0.15);
+      border-radius: 20px;
+      padding: 3px 12px;
+    }
+
+    /* ---- TOOLBAR COLLAPSIBLE ---- */
+    #dluss_toolbar {
+      position: absolute;
+      top: 58px;
+      right: 10px;
+      width: 190px;
+      background: rgba(13, 13, 15, 0.92);
+      border: 1px solid rgba(255, 255, 255, 0.07);
+      border-radius: 12px;
+      z-index: 150;
+      backdrop-filter: blur(16px);
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(245, 211, 0, 0.03);
+      overflow: hidden;
+      transition: max-height 0.35s ease, opacity 0.25s ease;
+      max-height: 900px;
+    }
+
+    #dluss_toolbar.collapsed {
+      max-height: 42px;
+    }
+
+    .toolbar-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 14px;
+      cursor: pointer;
+      user-select: none;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    }
+
+    .toolbar-header:hover {
+      background: rgba(255, 255, 255, 0.02);
+    }
+
+    .toolbar-header-title {
+      font-size: 11px;
+      font-weight: 700;
+      color: #f5d300;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+    }
+
+    .toolbar-toggle-icon {
+      font-size: 12px;
+      color: rgba(255, 255, 255, 0.4);
+      transition: transform 0.3s;
+    }
+
+    .toolbar-body {
+      padding: 8px 10px 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .tb-section {
+      margin-top: 6px;
+      padding-top: 6px;
+      border-top: 1px solid rgba(255, 255, 255, 0.05);
+    }
+
+    .tb-label {
+      font-size: 9px;
+      font-weight: 600;
+      color: rgba(255, 255, 255, 0.28);
+      text-transform: uppercase;
+      letter-spacing: 1.4px;
+      padding: 2px 4px 4px;
+    }
+
+    .tb-btn {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      width: 100%;
+      background: rgba(255, 255, 255, 0.03);
+      color: rgba(240, 240, 245, 0.85);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      padding: 7px 10px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 11.5px;
+      text-align: left;
+      transition: all 0.15s ease;
+      font-family: inherit;
+    }
+
+    .tb-btn:hover {
+      background: rgba(6, 182, 212, 0.08);
+      border-color: rgba(6, 182, 212, 0.3);
+      color: #fff;
+    }
+
+    .tb-btn:active {
+      transform: scale(0.97);
+    }
+
+    .tb-btn.active-tool {
+      background: rgba(245, 211, 0, 0.1);
+      border-color: rgba(245, 211, 0, 0.4);
+      color: #f5d300;
+    }
+
+    .tb-btn-icon {
+      font-size: 13px;
+      min-width: 16px;
+      text-align: center;
+    }
+
+    /* ---- INFO BAR ---- */
+    #dluss_infobar {
+      position: absolute;
+      bottom: 10px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(13, 13, 15, 0.85);
+      color: rgba(240, 240, 245, 0.5);
+      padding: 5px 18px;
+      border-radius: 20px;
+      font-size: 11px;
+      z-index: 150;
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      white-space: nowrap;
+      transition: color 0.3s;
+    }
+
+    /* ---- MISURA PANEL (flottante) ---- */
+    #dluss_measure_panel {
+      position: absolute;
+      bottom: 40px;
+      left: 10px;
+      width: 240px;
+      background: rgba(13, 13, 15, 0.92);
+      border: 1px solid rgba(6, 182, 212, 0.2);
+      border-radius: 10px;
+      padding: 12px 14px;
+      z-index: 150;
+      backdrop-filter: blur(14px);
+      display: none;
+      box-shadow: 0 4px 20px rgba(6, 182, 212, 0.06);
+    }
+
+    #dluss_measure_panel.visible {
+      display: block;
+    }
+
+    .measure-panel-title {
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 1.2px;
+      text-transform: uppercase;
+      color: #06b6d4;
+      margin-bottom: 8px;
+    }
+
+    .measure-row {
+      display: flex;
+      justify-content: space-between;
+      font-size: 11px;
+      padding: 3px 0;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+    }
+
+    .measure-key {
+      color: rgba(240, 240, 245, 0.45);
+    }
+
+    .measure-val {
+      color: #f0f0f5;
+      font-family: 'JetBrains Mono', monospace;
+      font-weight: 600;
+    }
+
+    /* ---- ANNOTAZIONI STILE 3DLUss ---- */
+    .annotation-label {
+      background: rgba(13, 13, 15, 0.9) !important;
+      border: 1px solid rgba(245, 211, 0, 0.3) !important;
+      color: #fff !important;
+      border-radius: 6px !important;
+      font-size: 12px !important;
+      padding: 4px 10px !important;
+      backdrop-filter: blur(8px) !important;
+    }
+
+    /* ---- TOUR INDICATOR ---- */
+    #tour_indicator {
+      position: absolute;
+      top: 58px;
+      left: 10px;
+      background: rgba(245, 211, 0, 0.08);
+      border: 1px solid rgba(245, 211, 0, 0.3);
+      border-radius: 8px;
+      padding: 6px 12px;
+      font-size: 11px;
+      color: #f5d300;
+      z-index: 150;
+      display: none;
+      backdrop-filter: blur(8px);
+      animation: tour-pulse 1.5s ease-in-out infinite;
+    }
+
+    @keyframes tour-pulse {
+
+      0%,
+      100% {
+        opacity: 0.7;
+      }
+
+      50% {
+        opacity: 1;
+      }
+    }
+
+    /* ---- RESPONSIVE MOBILE ---- */
+    @media (max-width: 600px) {
+      #dluss_toolbar {
+        width: 160px;
+        right: 6px;
+        top: 54px;
+      }
+
+      .tb-btn {
+        padding: 6px 8px;
+        font-size: 11px;
+      }
+
+      #dluss_header {
+        height: 42px;
+      }
+
+      #dluss_infobar {
+        font-size: 10px;
+        padding: 4px 12px;
+      }
+    }
+
+    /* Hide default Potree elements we override */
+    #potree_sidebar_container {
+      z-index: 100;
+    }
+  </style>
+</head>
+
+<body>
+
+  <!-- ============================================================
+     LOADING OVERLAY
+============================================================ -->
+  <div id="dluss_loading">
+    <div class="loading-brand">
+      <div class="loading-logo-box">🏗️</div>
+      <div class="loading-brand-text">
+        <span class="loading-brand-name">3DLUss</span>
+        <span class="loading-brand-sub">Digital Twin Viewer</span>
+      </div>
+    </div>
+    <div class="loading-spinner-wrap">
+      <div class="loading-spinner"></div>
+      <div class="loading-text">Caricamento nuvola di punti...</div>
+      <div class="loading-bar-wrap">
+        <div class="loading-bar"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================================
+     HEADER BAR
+============================================================ -->
+  <div id="dluss_header">
+    <div class="header-brand">
+      <div class="header-logo">🏗️</div>
+      <div>
+        <div class="header-title">3DLUss</div>
+        <div class="header-subtitle">Gemelli Digitali</div>
+      </div>
+    </div>
+    <div id="header_project_name">Caricamento...</div>
+  </div>
+
+  <!-- ============================================================
+     CONTENITORI OBBLIGATORI POTREE
+============================================================ -->
+  <div class="potree_container" style="position:absolute; width:100%; height:100%; left:0; top:0;">
+    <div id="potree_render_area"></div>
+    <div id="potree_sidebar_container"></div>
+  </div>
+
+  <!-- ============================================================
+     TOOLBAR 3DLUss
+============================================================ -->
+  <div id="dluss_toolbar">
+
+    <div class="toolbar-header" id="toolbar_toggle">
+      <span class="toolbar-header-title">🔧 Strumenti</span>
+      <span class="toolbar-toggle-icon" id="toggle_icon">▲</span>
+    </div>
+
+    <div class="toolbar-body">
+
+      <!-- MISURE -->
+      <div class="tb-label">Misure</div>
+      <button class="tb-btn" id="btn_dist">
+        <span class="tb-btn-icon">📏</span>Distanza
+      </button>
+      <button class="tb-btn" id="btn_area">
+        <span class="tb-btn-icon">📐</span>Area
+      </button>
+      <button class="tb-btn" id="btn_height">
+        <span class="tb-btn-icon">↕️</span>Altezza
+      </button>
+      <button class="tb-btn" id="btn_volume">
+        <span class="tb-btn-icon">📦</span>Volume
+      </button>
+      <button class="tb-btn" id="btn_profile">
+        <span class="tb-btn-icon">📊</span>Profilo sezione
+      </button>
+      <button class="tb-btn" id="btn_clip">
+        <span class="tb-btn-icon">✂️</span>Clipping
+      </button>
+      <button class="tb-btn" id="btn_clear_measures">
+        <span class="tb-btn-icon">🗑️</span>Cancella misure
+      </button>
+
+      <!-- VISUALIZZAZIONE -->
+      <div class="tb-section">
+        <div class="tb-label">Visualizzazione</div>
+        <button class="tb-btn active-tool" id="btn_rgb">
+          <span class="tb-btn-icon">🎨</span>RGB originale
+        </button>
+        <button class="tb-btn" id="btn_intensity">
+          <span class="tb-btn-icon">💡</span>Intensità
+        </button>
+        <button class="tb-btn" id="btn_elev">
+          <span class="tb-btn-icon">🌈</span>Elevazione
+        </button>
+        <button class="tb-btn" id="btn_class">
+          <span class="tb-btn-icon">🏷️</span>Classificazione
+        </button>
+        <button class="tb-btn" id="btn_bim">
+          <span class="tb-btn-icon">🏛️</span>Schema BIM
+        </button>
+      </div>
+
+      <!-- PUNTO SIZE -->
+      <div class="tb-section">
+        <div class="tb-label">Budget punti</div>
+        <button class="tb-btn" id="btn_quality_high">
+          <span class="tb-btn-icon">⭐</span>Alta qualità
+        </button>
+        <button class="tb-btn" id="btn_quality_med">
+          <span class="tb-btn-icon">🌟</span>Bilanciato
+        </button>
+        <button class="tb-btn" id="btn_quality_low">
+          <span class="tb-btn-icon">⚡</span>Performance
+        </button>
+      </div>
+
+      <!-- NAVIGAZIONE -->
+      <div class="tb-section">
+        <div class="tb-label">Navigazione</div>
+        <button class="tb-btn" id="btn_top">
+          <span class="tb-btn-icon">⬆️</span>Vista Top
+        </button>
+        <button class="tb-btn" id="btn_front">
+          <span class="tb-btn-icon">↗️</span>Vista Fronte
+        </button>
+        <button class="tb-btn" id="btn_fit">
+          <span class="tb-btn-icon">🔍</span>Mostra tutto
+        </button>
+        <button class="tb-btn" id="btn_ortho">
+          <span class="tb-btn-icon">📐</span><span class="btn-label">Ortografica</span>
+        </button>
+      </div>
+
+      <!-- TOUR -->
+      <div class="tb-section">
+        <div class="tb-label">Camera Tour</div>
+        <button class="tb-btn" id="btn_tour_play">
+          <span class="tb-btn-icon">▶️</span>Avvia tour
+        </button>
+        <button class="tb-btn" id="btn_tour_stop" style="display:none;">
+          <span class="tb-btn-icon">⏹️</span>Ferma tour
+        </button>
+      </div>
+
+      <!-- EXPORT -->
+      <div class="tb-section">
+        <div class="tb-label">Export</div>
+        <button class="tb-btn" id="btn_screenshot">
+          <span class="tb-btn-icon">📸</span>Screenshot
+        </button>
+        <button class="tb-btn" id="btn_export_json">
+          <span class="tb-btn-icon">💾</span>Misure JSON
+        </button>
+        <button class="tb-btn" id="btn_export_dxf">
+          <span class="tb-btn-icon">📄</span>Misure DXF
+        </button>
+        <button class="tb-btn" id="btn_share">
+          <span class="tb-btn-icon">🔗</span>Condividi
+        </button>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ============================================================
+     TOUR INDICATOR
+============================================================ -->
+  <div id="tour_indicator">▶ Tour in corso...</div>
+
+  <!-- ============================================================
+     INFO BAR
+============================================================ -->
+  <div id="dluss_infobar">
+    3DLUss — Caricamento... · Rotella = zoom · Trascina = ruota · Tasto destro = pan
+  </div>
+
+  <!-- ============================================================
+     MEASURE PANEL
+============================================================ -->
+  <div id="dluss_measure_panel">
+    <div class="measure-panel-title">📊 Ultima misura</div>
+    <div id="measure_rows"></div>
+  </div>
+
+  <!-- ============================================================
+     SCRIPT POTREE — ORDINE OBBLIGATORIO
+============================================================ -->
+  <script src="libs/jquery/jquery-3.1.1.min.js"></script>
+  <script src="libs/spectrum/spectrum.js"></script>
+  <script src="libs/jquery-ui/jquery-ui.min.js"></script>
+  <script src="libs/three.js/build/three.min.js"></script>
+  <script src="libs/other/BinaryHeap.js"></script>
+  <script src="libs/tween/tween.min.js"></script>
+  <script src="libs/d3/d3.js"></script>
+  <script src="libs/proj4/proj4.js"></script>
+  <script src="libs/openlayers3/ol.js"></script>
+  <script src="libs/i18next/i18next.js"></script>
+  <script src="libs/potree/potree.js"></script>
+  <script src="libs/plasio/js/laslaz.js"></script>
+
+  <script>
+    "use strict";
+
+    // ============================================================
+    // CONFIGURAZIONE — adattare per ogni progetto
+    // ============================================================
+    const DLUSS_CONFIG = {
+      cloudPath: "./pointclouds/lion/cloud.js",
+
+      // Nome visualizzato del progetto
+      projectName: "3DLUss — Demo Showcase",
+
+      // Offset geografico UTM (letto da metadata.json in produzione)
+      // Impostare a null per usare coordinate locali
+      geoOffset: null, // es: { x: 523150.0, y: 4891000.0, z: 145.0 }
+
+      // Proiezione sorgente (EPSG code) — null se non georeferenziato
+      projection: null, // es: "EPSG:32632"
+
+      // Webhook n8n (null = disabilitato)
+      // IMPORTANTE: funziona solo da rete locale (not HTTPS→HTTP)
+      n8nWebhook: null, // es: "http://localhost:5678/webhook/potree-measurement"
+
+      // Annotazioni di esempio (modificare o svuotare)
+      annotations: [
+        // { position: [0, 0, 0], title: "Punto A", description: "Dettaglio..." }
+      ],
+
+      // Keyframe tour (posizioni camera [x,y,z] e target [x,y,z])
+      tourKeyframes: [
+        // { position: [20, 15, 10], target: [0, 0, 0], t: 0.0 },
+        // { position: [5, 5, 15],   target: [0, 0, 2], t: 0.5 },
+        // { position: [-10, 8, 5],  target: [0, 0, 0], t: 1.0 }
+      ]
+    };
+
+    // demo.js può ora accedere a DLUSS_CONFIG (definito sopra)
+    // Il tag è qui e non prima delle librerie per garantire l'ordine corretto
+  </script>
+  <script src="demo.js"></script>
+  <script>
+    "use strict";
+
+    // ============================================================
+    // CLASSIFICAZIONE BIM PERSONALIZZATA
+    // ============================================================
+    const BIM_SCHEME = {
+      0: { visible: true, name: "Non classificato", color: [0.5, 0.5, 0.5, 1] },
+      1: { visible: true, name: "Struttura", color: [0.8, 0.6, 0.2, 1] },
+      2: { visible: true, name: "Pavimento/Terreno", color: [0.63, 0.32, 0.18, 1] },
+      3: { visible: true, name: "Pareti", color: [0.7, 0.7, 0.9, 1] },
+      4: { visible: true, name: "Soffitto", color: [0.6, 0.8, 0.6, 1] },
+      5: { visible: true, name: "Vegetazione", color: [0.0, 1.0, 0.0, 1] },
+      6: { visible: true, name: "Tetto/Edificio", color: [1.0, 0.66, 0.0, 1] },
+      7: { visible: true, name: "Veicoli", color: [1.0, 0.0, 0.5, 1] },
+      11: { visible: true, name: "Strade", color: [0.5, 0.5, 0.55, 1] },
+      12: { visible: true, name: "Acqua", color: [0.0, 0.5, 1.0, 1] },
+    };
+
+    // ============================================================
+    // INIZIALIZZAZIONE (dopo DOMContentLoaded + tutte le lib)
+    // ============================================================
+    window.addEventListener("load", () => {
+      // ----------------------------------------------------------
+      // 0. URL PARAMS — override DLUSS_CONFIG prima di qualsiasi uso
+      // Deve stare qui, PRIMA dell'init del viewer e di loadPointCloud
+      // ----------------------------------------------------------
+      const urlParams = new URLSearchParams(window.location.search);
+      if (urlParams.get("cloud")) {
+        DLUSS_CONFIG.cloudPath = urlParams.get("cloud");
+        DLUSS_CONFIG.projectName = urlParams.get("name") || "Progetto 3DLUss";
+      }
+
+      let viewer;
+      let activeTool = null;
+      let isOrtho = false;
+      let tourAnimation = null;
+      let isTourPlaying = false;
+
+      // ----------------------------------------------------------
+      // Helpers UI
+      // ----------------------------------------------------------
+      const el = id => document.getElementById(id);
+
+      function setActiveToolBtn(btnId) {
+        document.querySelectorAll(".tb-btn").forEach(b => b.classList.remove("active-tool"));
+        if (btnId) el(btnId).classList.add("active-tool");
+        activeTool = btnId ?? null;
+      }
+
+      function updateInfoBar(text) {
+        el("dluss_infobar").textContent = text;
+      }
+
+      function showMeasurePanel(measurement) {
+        const rows = el("measure_rows");
+        rows.innerHTML = "";
+
+        const addRow = (key, val) => {
+          const row = document.createElement("div");
+          row.className = "measure-row";
+          row.innerHTML = `<span class="measure-key">${key}</span><span class="measure-val">${val}</span>`;
+          rows.appendChild(row);
+        };
+
+        addRow("Tipo", measurement.name || "Misura");
+
+        if (measurement.points && measurement.points.length > 0) {
+          addRow("Punti", measurement.points.length);
+
+          // Lunghezza (per misure lineari)
+          if (measurement.lengthMarkers) {
+            const len = measurement.lengthMarkers.totalLength;
+            if (len !== undefined) addRow("Lunghezza", len.toFixed(3) + " m");
+          }
+
+          // Area (per poligoni chiusi)
+          if (measurement.areaValue) {
+            addRow("Area", measurement.areaValue.toFixed(3) + " m²");
+          }
+
+          // Primo punto
+          const p0 = measurement.points[0].position;
+          const coords = DLUSS_CONFIG.geoOffset
+            ? `E ${(p0.x + DLUSS_CONFIG.geoOffset.x).toFixed(2)}, N ${(p0.y + DLUSS_CONFIG.geoOffset.y).toFixed(2)}`
+            : `${p0.x.toFixed(2)}, ${p0.y.toFixed(2)}, ${p0.z.toFixed(2)}`;
+          addRow(DLUSS_CONFIG.geoOffset ? "E, N" : "X, Y, Z", coords);
+        }
+
+        el("dluss_measure_panel").classList.add("visible");
+      }
+
+      // ----------------------------------------------------------
+      // 1. INIZIALIZZAZIONE VIEWER
+      // ----------------------------------------------------------
+      viewer = new Potree.Viewer(el("potree_render_area"));
+
+      // Rendering ottimale — impostazioni iniziali
+      viewer.setEDLEnabled(true);
+      viewer.setFOV(60);
+      viewer.setPointBudget(2_000_000);
+      viewer.setBackground("gradient");
+      viewer.setMinNodeSize(50);
+      viewer.loadSettingsFromURL();
+
+      // GUI sidebar in italiano
+      viewer.loadGUI(() => {
+        viewer.setLanguage("it");
+      });
+
+      // Mobile: auto-riduzione performance
+      if (/Mobi|Android|iPhone/i.test(navigator.userAgent)) {
+        viewer.setPointBudget(400_000);
+        viewer.setEDLEnabled(false);
+        viewer.setMinNodeSize(100);
+      }
+
+      // ----------------------------------------------------------
+      // 2. CARICAMENTO NUVOLA DI PUNTI
+      // ----------------------------------------------------------
+      el("header_project_name").textContent = DLUSS_CONFIG.projectName;
+
+      Potree.loadPointCloud(
+        DLUSS_CONFIG.cloudPath,
+        DLUSS_CONFIG.projectName,
+        e => {
+          const pointcloud = e.pointcloud;
+          const material = pointcloud.material;
+
+          // Configurazione materiale
+          material.size = 1;
+          material.pointSizeType = Potree.PointSizeType.ADAPTIVE;
+          material.shape = Potree.PointShape.CIRCLE;
+          material.activeAttributeName = "rgba";
+
+          viewer.scene.addPointCloud(pointcloud);
+          viewer.fitToScreen();
+
+          // Nascondi loading
+          const overlay = el("dluss_loading");
+          overlay.classList.add("hidden");
+          setTimeout(() => overlay.style.display = "none", 700);
+
+          // Info bar aggiornata
+          const nPunti = pointcloud.pcoGeometry?.numPoints;
+          updateInfoBar(
+            `3DLUss — ${nPunti ? nPunti.toLocaleString("it") + " punti · " : ""}` +
+            "Rotella = zoom · Trascina = ruota · Tasto destro = pan"
+          );
+
+          // Proiezione UTM (se configurata)
+          if (DLUSS_CONFIG.projection) {
+            const EPSG_DEFS = {
+              "EPSG:32632": "+proj=utm +zone=32 +datum=WGS84 +units=m +no_defs",
+              "EPSG:32633": "+proj=utm +zone=33 +datum=WGS84 +units=m +no_defs",
+              "EPSG:32634": "+proj=utm +zone=34 +datum=WGS84 +units=m +no_defs",
+            };
+            const def = EPSG_DEFS[DLUSS_CONFIG.projection];
+            if (def) {
+              proj4.defs(DLUSS_CONFIG.projection, def);
+            } else {
+              console.warn("Proiezione non supportata:", DLUSS_CONFIG.projection);
+            }
+          }
+
+          // Annotazioni
+          DLUSS_CONFIG.annotations.forEach(ann => {
+            const annotation = new Potree.Annotation({
+              position: new THREE.Vector3(...ann.position),
+              title: ann.title,
+              description: ann.description || ""
+            });
+            viewer.scene.annotations.add(annotation);
+          });
+
+          // Setup tour (se ci sono keyframe)
+          if (DLUSS_CONFIG.tourKeyframes.length >= 2) {
+            setupTour();
+          } else {
+            el("btn_tour_play").style.opacity = "0.3";
+            el("btn_tour_play").title = "Nessun keyframe configurato";
+            el("btn_tour_play").style.pointerEvents = "none";
+          }
+
+          // Webhook n8n
+          if (DLUSS_CONFIG.n8nWebhook) {
+            viewer.scene.addEventListener("measurement_added", async ev => {
+              const m = ev.measurement;
+              try {
+                await fetch(DLUSS_CONFIG.n8nWebhook, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    timestamp: new Date().toISOString(),
+                    project: DLUSS_CONFIG.projectName,
+                    name: m.name,
+                    points: m.points.map(p => ({
+                      x: p.position.x, y: p.position.y, z: p.position.z
+                    })),
+                    length: m.lengthMarkers?.totalLength
+                  })
+                });
+              } catch (err) {
+                console.warn("Webhook n8n non raggiungibile:", err.message);
+              }
+            });
+          }
+        },
+        e => {
+          console.error("Errore caricamento nuvola:", e);
+          const wrap = el("dluss_loading").querySelector(".loading-spinner-wrap");
+          wrap.querySelector(".loading-spinner").style.display = "none";
+          wrap.querySelector(".loading-text").textContent =
+            "⚠️ Nuvola non trovata. Verificare DLUSS_CONFIG.cloudPath";
+          const retryBtn = document.createElement("button");
+          retryBtn.textContent = "🔄 Riprova";
+          retryBtn.style.cssText =
+            "margin-top:20px;padding:10px 24px;background:#f5d300;color:#0d0d0f;" +
+            "border:none;border-radius:8px;font-weight:700;cursor:pointer;font-size:14px;";
+          retryBtn.onclick = () => location.reload();
+          wrap.appendChild(retryBtn);
+        }
+      );
+
+      // ----------------------------------------------------------
+      // 3. EVENTO: misura aggiunta → pannello laterale + postMessage
+      // ----------------------------------------------------------
+      viewer.scene.addEventListener("measurement_added", ev => {
+        const m = ev.measurement;
+        showMeasurePanel(m);
+
+        // Notifica sito host (cross-frame)
+        window.parent.postMessage({
+          type: "dluss_measurement_added",
+          measurement: {
+            name: m.name,
+            points: m.points.map(p => ({
+              x: p.position.x, y: p.position.y, z: p.position.z
+            }))
+          }
+        }, "*");
+      });
+
+      // ----------------------------------------------------------
+      // 4. TOOLBAR — MISURE
+      // ----------------------------------------------------------
+      el("btn_dist").onclick = () => {
+        setActiveToolBtn("btn_dist");
+        updateInfoBar("📏 Distanza: click per aggiungere punti, doppio click per terminare");
+        viewer.measuringTool.startInsertion({
+          showDistances: true, showAngles: true, closed: false,
+          name: "Distanza " + (viewer.scene.measurements.length + 1)
+        });
+      };
+
+      el("btn_area").onclick = () => {
+        setActiveToolBtn("btn_area");
+        updateInfoBar("📐 Area: click per i vertici del poligono, doppio click per chiudere");
+        viewer.measuringTool.startInsertion({
+          showDistances: true, showArea: true, closed: true,
+          name: "Area " + (viewer.scene.measurements.length + 1)
+        });
+      };
+
+      el("btn_height").onclick = () => {
+        setActiveToolBtn("btn_height");
+        updateInfoBar("↕️ Altezza: click punto A, poi punto B");
+        viewer.measuringTool.startInsertion({
+          showHeight: true, closed: false,
+          name: "Altezza " + (viewer.scene.measurements.length + 1)
+        });
+      };
+
+      el("btn_volume").onclick = () => {
+        setActiveToolBtn("btn_volume");
+        updateInfoBar("📦 Volume: disegna il box di volume");
+        viewer.volumeTool.startInsertion();
+      };
+
+      el("btn_profile").onclick = () => {
+        setActiveToolBtn("btn_profile");
+        updateInfoBar("📊 Profilo: traccia la linea di sezione (doppio click per terminare)");
+        viewer.profileTool.startInsertion();
+      };
+
+      el("btn_clip").onclick = () => {
+        setActiveToolBtn("btn_clip");
+        updateInfoBar("✂️ Clipping: disegna il volume di clipping");
+        viewer.clippingTool.startInsertion({ type: Potree.ClipType.CLIP_OUTSIDE });
+      };
+
+      el("btn_clear_measures").onclick = () => {
+        setActiveToolBtn(null);
+        viewer.scene.removeAllMeasurements();
+        el("dluss_measure_panel").classList.remove("visible");
+        updateInfoBar("🗑️ Misure cancellate · 3DLUss — Rotella = zoom · Trascina = ruota");
+      };
+
+      // ----------------------------------------------------------
+      // 5. TOOLBAR — VISUALIZZAZIONE
+      // ----------------------------------------------------------
+      const getMaterial = () => viewer.scene.pointclouds[0]?.material;
+
+      el("btn_rgb").onclick = () => {
+        setActiveToolBtn("btn_rgb");
+        const m = getMaterial();
+        if (m) m.activeAttributeName = "rgba";
+      };
+
+      el("btn_intensity").onclick = () => {
+        setActiveToolBtn("btn_intensity");
+        const m = getMaterial();
+        if (m) {
+          m.activeAttributeName = "intensity";
+          m.gradient = Potree.Gradients.GRAYSCALE;
+        }
+      };
+
+      el("btn_elev").onclick = () => {
+        setActiveToolBtn("btn_elev");
+        const m = getMaterial();
+        if (m) {
+          m.activeAttributeName = "elevation";
+          m.gradient = Potree.Gradients.SPECTRAL;
+        }
+      };
+
+      el("btn_class").onclick = () => {
+        setActiveToolBtn("btn_class");
+        const m = getMaterial();
+        if (m) m.activeAttributeName = "classification";
+      };
+
+      el("btn_bim").onclick = () => {
+        setActiveToolBtn("btn_bim");
+        const m = getMaterial();
+        if (m) {
+          m.classification = BIM_SCHEME;
+          m.activeAttributeName = "classification";
+        }
+      };
+
+      // ----------------------------------------------------------
+      // 6. TOOLBAR — BUDGET QUALITÀ
+      // ----------------------------------------------------------
+      el("btn_quality_high").onclick = () => {
+        setActiveToolBtn("btn_quality_high");
+        viewer.setPointBudget(3_000_000);
+        viewer.setEDLEnabled(true);
+        viewer.setMinNodeSize(30);
+        const m = getMaterial();
+        if (m) { m.pointSizeType = Potree.PointSizeType.ADAPTIVE; m.shape = Potree.PointShape.CIRCLE; }
+        updateInfoBar("⭐ Alta qualità attiva (3M punti) · potrebbe rallentare su GPU integrate");
+      };
+
+      el("btn_quality_med").onclick = () => {
+        setActiveToolBtn("btn_quality_med");
+        viewer.setPointBudget(1_500_000);
+        viewer.setEDLEnabled(true);
+        viewer.setMinNodeSize(50);
+        updateInfoBar("🌟 Bilanciato (1.5M punti)");
+      };
+
+      el("btn_quality_low").onclick = () => {
+        setActiveToolBtn("btn_quality_low");
+        viewer.setPointBudget(400_000);
+        viewer.setEDLEnabled(false);
+        viewer.setMinNodeSize(100);
+        const m = getMaterial();
+        if (m) { m.pointSizeType = Potree.PointSizeType.FIXED; m.shape = Potree.PointShape.SQUARE; }
+        updateInfoBar("⚡ Performance mode attiva (400K punti)");
+      };
+
+      // ----------------------------------------------------------
+      // 7. TOOLBAR — NAVIGAZIONE
+      // ----------------------------------------------------------
+      el("btn_top").onclick = () => viewer.setView("U");
+      el("btn_front").onclick = () => viewer.setView("F");
+      el("btn_fit").onclick = () => viewer.fitToScreen();
+
+      el("btn_ortho").onclick = () => {
+        isOrtho = !isOrtho;
+        viewer.setCameraMode(
+          isOrtho ? Potree.CameraMode.ORTHOGRAPHIC : Potree.CameraMode.PERSPECTIVE
+        );
+        el("btn_ortho").querySelector(".tb-btn-icon").textContent = isOrtho ? "🔭" : "📐";
+        el("btn_ortho").querySelector(".btn-label").textContent = isOrtho ? "Prospettica" : "Ortografica";
+        if (isOrtho) setActiveToolBtn("btn_ortho");
+        else document.querySelectorAll(".tb-btn").forEach(b => b.classList.remove("active-tool"));
+      };
+
+      // ----------------------------------------------------------
+      // 8. CAMERA TOUR
+      // ----------------------------------------------------------
+      function setupTour() {
+        tourAnimation = new Potree.CameraAnimation(viewer);
+        tourAnimation.setDuration(20);
+
+        DLUSS_CONFIG.tourKeyframes.forEach(kf => {
+          tourAnimation.addNode(
+            new THREE.Vector3(...kf.position),
+            new THREE.Vector3(...kf.target),
+            kf.t
+          );
+        });
+
+        tourAnimation.addEventListener("stop", () => {
+          isTourPlaying = false;
+          el("btn_tour_play").style.display = "";
+          el("btn_tour_stop").style.display = "none";
+          el("tour_indicator").style.display = "none";
+          updateInfoBar("🏁 Tour completato · 3DLUss");
+        });
+      }
+
+      el("btn_tour_play").onclick = () => {
+        if (!tourAnimation || DLUSS_CONFIG.tourKeyframes.length < 2) return;
+        isTourPlaying = true;
+        el("btn_tour_play").style.display = "none";
+        el("btn_tour_stop").style.display = "";
+        el("tour_indicator").style.display = "block";
+        updateInfoBar("▶️ Camera tour in corso...");
+        tourAnimation.play();
+      };
+
+      el("btn_tour_stop").onclick = () => {
+        if (tourAnimation) tourAnimation.stop();
+        isTourPlaying = false;
+        el("btn_tour_play").style.display = "";
+        el("btn_tour_stop").style.display = "none";
+        el("tour_indicator").style.display = "none";
+        updateInfoBar("⏹ Tour interrotto · 3DLUss");
+      };
+
+      // ----------------------------------------------------------
+      // 9. TOOLBAR TOGGLE
+      // ----------------------------------------------------------
+      el("toolbar_toggle").onclick = () => {
+        const toolbar = el("dluss_toolbar");
+        const icon = el("toggle_icon");
+        toolbar.classList.toggle("collapsed");
+        icon.textContent = toolbar.classList.contains("collapsed") ? "▼" : "▲";
+      };
+
+      // ----------------------------------------------------------
+      // 10. EXPORT — SCREENSHOT
+      // ----------------------------------------------------------
+      el("btn_screenshot").onclick = () => {
+        viewer.render();
+        viewer.renderer.domElement.toBlob(blob => {
+          const a = document.createElement("a");
+          const ts = new Date().toISOString().slice(0, 19).replace(/:/g, "-");
+          a.download = `3dluss_screenshot_${ts}.png`;
+          a.href = URL.createObjectURL(blob);
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(a.href);
+          updateInfoBar("📸 Screenshot salvato!");
+        }, "image/png");
+      };
+
+      // ----------------------------------------------------------
+      // 11. EXPORT — GeoJSON
+      // ----------------------------------------------------------
+      el("btn_export_json").onclick = () => {
+        const measurements = viewer.scene.measurements;
+        if (measurements.length === 0) {
+          updateInfoBar("⚠️ Nessuna misura da esportare. Usa gli strumenti Misure prima.");
+          return;
+        }
+        const geojson = {
+          type: "FeatureCollection",
+          metadata: {
+            project: DLUSS_CONFIG.projectName,
+            exportDate: new Date().toISOString(),
+            geoOffset: DLUSS_CONFIG.geoOffset || null,
+            projection: DLUSS_CONFIG.projection || null
+          },
+          features: measurements.map(m => ({
+            type: "Feature",
+            geometry: {
+              type: "LineString",
+              coordinates: m.points.map(p => {
+                const off = DLUSS_CONFIG.geoOffset;
+                return off
+                  ? [p.position.x + off.x, p.position.y + off.y, p.position.z + off.z]
+                  : [p.position.x, p.position.y, p.position.z];
+              })
+            },
+            properties: {
+              name: m.name,
+              pointCount: m.points.length,
+              totalLength: m.lengthMarkers?.totalLength || null,
+              area: m.areaValue || null
+            }
+          }))
+        };
+        const blob = new Blob([JSON.stringify(geojson, null, 2)], { type: "application/json" });
+        const a = document.createElement("a");
+        a.download = `3dluss_misure_${Date.now()}.geojson`;
+        a.href = URL.createObjectURL(blob);
+        a.click();
+        updateInfoBar(`💾 GeoJSON esportato (${measurements.length} misure)`);
+      };
+
+      // ----------------------------------------------------------
+      // 12. EXPORT — DXF AutoCAD
+      // ----------------------------------------------------------
+      el("btn_export_dxf").onclick = () => {
+        const measurements = viewer.scene.measurements;
+        if (measurements.length === 0) {
+          updateInfoBar("⚠️ Nessuna misura da esportare.");
+          return;
+        }
+        const off = DLUSS_CONFIG.geoOffset;
+        const lines = [
+          "  0\nSECTION\n  2\nHEADER\n  0\nENDSEC",
+          "  0\nSECTION\n  2\nENTITIES"
+        ];
+        measurements.forEach(m => {
+          if (m.points.length >= 2) {
+            const layerName = `Potree_${m.name.replace(/[^a-zA-Z0-9_\-]/g, "_").slice(0, 31)}`;
+            for (let i = 0; i < m.points.length - 1; i++) {
+              let p1 = m.points[i].position;
+              let p2 = m.points[i + 1].position;
+              if (off) {
+                p1 = { x: p1.x + off.x, y: p1.y + off.y, z: p1.z + off.z };
+                p2 = { x: p2.x + off.x, y: p2.y + off.y, z: p2.z + off.z };
+              }
+              lines.push(
+                `  0\nLINE\n  8\n${layerName}\n` +
+                ` 10\n${p1.x.toFixed(6)}\n 20\n${p1.y.toFixed(6)}\n 30\n${p1.z.toFixed(6)}\n` +
+                ` 11\n${p2.x.toFixed(6)}\n 21\n${p2.y.toFixed(6)}\n 31\n${p2.z.toFixed(6)}`
+              );
+            }
+          }
+        });
+        lines.push("  0\nENDSEC\n  0\nEOF");
+        const blob = new Blob([lines.join("\n")], { type: "text/plain" });
+        const a = document.createElement("a");
+        a.download = `3dluss_misure_${Date.now()}.dxf`;
+        a.href = URL.createObjectURL(blob);
+        a.click();
+        updateInfoBar(`📄 DXF esportato (${measurements.length} misure) — compatibile AutoCAD/FreeCAD`);
+      };
+
+      // ----------------------------------------------------------
+      // 13. CONDIVISIONE LINK (deep linking con stato camera)
+      // ----------------------------------------------------------
+      el("btn_share").onclick = () => {
+        const pos = viewer.scene.view.position;
+        const tgt = viewer.scene.view.target;
+        const params = new URLSearchParams({
+          position: `${pos.x.toFixed(2)},${pos.y.toFixed(2)},${pos.z.toFixed(2)}`,
+          target: `${tgt.x.toFixed(2)},${tgt.y.toFixed(2)},${tgt.z.toFixed(2)}`,
+          pointBudget: viewer.getPointBudget()
+        });
+        const url = `${window.location.origin}${window.location.pathname}?${params}`;
+        if (navigator.clipboard) {
+          navigator.clipboard.writeText(url)
+            .then(() => updateInfoBar("🔗 Link copiato negli appunti!"))
+            .catch(() => prompt("Copia questo link:", url));
+        } else {
+          prompt("Copia questo link:", url);
+        }
+      };
+
+      // ----------------------------------------------------------
+      // 14. postMessage API — comunicazione cross-frame (dal sito host)
+      // ----------------------------------------------------------
+      window.addEventListener("message", ev => {
+        if (!ev.data || !ev.data.action) return;
+        const d = ev.data;
+
+        // Cambia vista camera
+        if (d.action === "setView" && d.position && d.target) {
+          viewer.scene.view.position.set(d.position.x, d.position.y, d.position.z);
+          viewer.scene.view.lookAt(new THREE.Vector3(d.target.x, d.target.y, d.target.z));
+        }
+
+        // Cambia nuvola di punti (path nuovo metadata.json)
+        if (d.action === "loadCloud" && d.path) {
+          // Ricarica la pagina con il nuovo path codificato come param
+          const url = new URL(window.location.href);
+          url.searchParams.set("cloud", d.path);
+          url.searchParams.set("name", d.name || "Progetto 3DLUss");
+          window.location.href = url.toString();
+        }
+
+        // Cambia point budget
+        if (d.action === "setPointBudget" && d.value) {
+          viewer.setPointBudget(d.value);
+        }
+
+        // Fit to screen
+        if (d.action === "fitToScreen") {
+          viewer.fitToScreen();
+        }
+      });
+
+      // Invia ping al sito host quando il viewer è pronto
+      window.parent.postMessage({ type: "dluss_viewer_ready" }, "*");
+
+    }); // end window.load
+  </script>
+
+</body>
+
+</html>
