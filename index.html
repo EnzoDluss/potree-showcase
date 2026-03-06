@@ -501,6 +501,40 @@
     /* Hide default Potree elements we override */
     #potree_sidebar_container {
       z-index: 100;
+      transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    #potree_sidebar_container.sidebar-hidden {
+      transform: translateX(-105%);
+    }
+
+    /* ---- SIDEBAR TOGGLE BUTTON ---- */
+    #btn_sidebar_toggle {
+      background: none;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 8px;
+      color: rgba(240, 240, 245, 0.65);
+      cursor: pointer;
+      padding: 5px 10px;
+      font-size: 18px;
+      line-height: 1;
+      transition: all 0.15s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-right: 8px;
+      flex-shrink: 0;
+    }
+
+    #btn_sidebar_toggle:hover {
+      background: rgba(245, 211, 0, 0.08);
+      border-color: rgba(245, 211, 0, 0.3);
+      color: #f5d300;
+    }
+
+    #btn_sidebar_toggle.sidebar-open {
+      border-color: rgba(245, 211, 0, 0.25);
+      color: rgba(245, 211, 0, 0.7);
     }
   </style>
 </head>
@@ -512,7 +546,7 @@
 ============================================================ -->
   <div id="dluss_loading">
     <div class="loading-brand">
-      <div class="loading-logo-box">🏗️</div>
+      <div class="loading-logo-box"><img src="./logo.jpg" alt="3DLUss" style="width:100%;height:100%;object-fit:contain;border-radius:6px;"></div>
       <div class="loading-brand-text">
         <span class="loading-brand-name">3DLUss</span>
         <span class="loading-brand-sub">Digital Twin Viewer</span>
@@ -532,12 +566,13 @@
 ============================================================ -->
   <div id="dluss_header">
     <div class="header-brand">
-      <div class="header-logo">🏗️</div>
+      <div class="header-logo"><img src="./logo.jpg" alt="3DLUss" style="width:100%;height:100%;object-fit:contain;border-radius:4px;"></div>
       <div>
         <div class="header-title">3DLUss</div>
         <div class="header-subtitle">Gemelli Digitali</div>
       </div>
     </div>
+    <button id="btn_sidebar_toggle" title="Mostra/nascondi pannello Potree">☰</button>
     <div id="header_project_name">Caricamento...</div>
   </div>
 
@@ -809,6 +844,18 @@
       function updateInfoBar(text) {
         el("dluss_infobar").textContent = text;
       }
+
+      // --- Sidebar toggle ---
+      const sidebarEl = el("potree_sidebar_container");
+      let sidebarOpen = window.innerWidth > 768; // su mobile parte chiusa
+      if (!sidebarOpen) sidebarEl.classList.add("sidebar-hidden");
+      const sidebarBtn = el("btn_sidebar_toggle");
+      sidebarBtn.classList.toggle("sidebar-open", sidebarOpen);
+      sidebarBtn.addEventListener("click", () => {
+        sidebarOpen = !sidebarOpen;
+        sidebarEl.classList.toggle("sidebar-hidden", !sidebarOpen);
+        sidebarBtn.classList.toggle("sidebar-open", sidebarOpen);
+      });
 
       function showMeasurePanel(measurement) {
         const rows = el("measure_rows");
