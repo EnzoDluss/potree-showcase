@@ -751,10 +751,10 @@
     // CONFIGURAZIONE — adattare per ogni progetto
     // ============================================================
     const DLUSS_CONFIG = {
-      cloudPath: "./pointclouds/lion/cloud.js",
+      cloudPath: "./pointclouds/fonte-acquedotto/metadata.json",
 
       // Nome visualizzato del progetto
-      projectName: "3DLUss — Demo Showcase",
+      projectName: "3DLUss — Fonte Acquedotto",
 
       // Offset geografico UTM (letto da metadata.json in produzione)
       // Impostare a null per usare coordinate locali
@@ -903,7 +903,7 @@
       // Rendering ottimale — impostazioni iniziali
       viewer.setEDLEnabled(true);
       viewer.setFOV(60);
-      viewer.setPointBudget(2_000_000);
+      viewer.setPointBudget(5_000_000);
       viewer.setBackground("gradient");
       viewer.setMinNodeSize(50);
       viewer.loadSettingsFromURL();
@@ -937,6 +937,27 @@
           material.pointSizeType = Potree.PointSizeType.ADAPTIVE;
           material.shape = Potree.PointShape.CIRCLE;
           material.activeAttributeName = "rgba";
+
+          // Fix tightBoundingBox: PotreeConverter 2.x crea sempre un cubo gonfiato
+          // (lato = max dimensione XYZ). L'OctreeLoader usa questo cubo per tightBoundingBox,
+          // causando fitToScreen() a posizionare la camera troppo lontana e puntando
+          // al centro del cubo vuoto invece che ai dati reali.
+          // Sovrascriviamo con i bounds reali letti dall'attributo "position" del metadata.
+          const pcoGeom = pointcloud.pcoGeometry;
+          const posAttr = pointcloud.getAttribute("position");
+          if (posAttr && Array.isArray(posAttr.range[0])) {
+            const aMin = new THREE.Vector3(...posAttr.range[0]);
+            const aMax = new THREE.Vector3(...posAttr.range[1]);
+            // Converti da coordinate originali a coordinate locali (- offset del cubo)
+            aMin.sub(pcoGeom.offset);
+            aMax.sub(pcoGeom.offset);
+            const tbb = new THREE.Box3(aMin, aMax);
+            pcoGeom.tightBoundingBox = tbb;
+            pcoGeom.tightBoundingSphere = tbb.getBoundingSphere(new THREE.Sphere());
+            // Aggiorna heightMin/Max del materiale (range Z per colore elevazione)
+            material.heightMin = aMin.z;
+            material.heightMax = aMax.z;
+          }
 
           viewer.scene.addPointCloud(pointcloud);
           viewer.fitToScreen();
