@@ -546,7 +546,8 @@
 ============================================================ -->
   <div id="dluss_loading">
     <div class="loading-brand">
-      <div class="loading-logo-box"><img src="./logo.jpg" alt="3DLUss" style="width:100%;height:100%;object-fit:contain;border-radius:6px;"></div>
+      <div class="loading-logo-box"><img src="./logo.jpg" alt="3DLUss"
+          style="width:100%;height:100%;object-fit:contain;border-radius:6px;"></div>
       <div class="loading-brand-text">
         <span class="loading-brand-name">3DLUss</span>
         <span class="loading-brand-sub">Digital Twin Viewer</span>
@@ -566,7 +567,8 @@
 ============================================================ -->
   <div id="dluss_header">
     <div class="header-brand">
-      <div class="header-logo"><img src="./logo.jpg" alt="3DLUss" style="width:100%;height:100%;object-fit:contain;border-radius:4px;"></div>
+      <div class="header-logo"><img src="./logo.jpg" alt="3DLUss"
+          style="width:100%;height:100%;object-fit:contain;border-radius:4px;"></div>
       <div>
         <div class="header-title">3DLUss</div>
         <div class="header-subtitle">Gemelli Digitali</div>
@@ -607,28 +609,28 @@
 
       <!-- MISURE -->
       <div class="tb-section">
-      <div class="tb-label">Misure</div>
-      <button class="tb-btn" id="btn_dist">
-        <span class="tb-btn-icon">📏</span>Distanza
-      </button>
-      <button class="tb-btn" id="btn_area">
-        <span class="tb-btn-icon">📐</span>Area
-      </button>
-      <button class="tb-btn" id="btn_height">
-        <span class="tb-btn-icon">↕️</span>Altezza
-      </button>
-      <button class="tb-btn" id="btn_volume">
-        <span class="tb-btn-icon">📦</span>Volume
-      </button>
-      <button class="tb-btn" id="btn_profile">
-        <span class="tb-btn-icon">📊</span>Profilo sezione
-      </button>
-      <button class="tb-btn" id="btn_clip">
-        <span class="tb-btn-icon">✂️</span>Clipping
-      </button>
-      <button class="tb-btn" id="btn_clear_measures">
-        <span class="tb-btn-icon">🗑️</span>Cancella misure
-      </button>
+        <div class="tb-label">Misure</div>
+        <button class="tb-btn" id="btn_dist">
+          <span class="tb-btn-icon">📏</span>Distanza
+        </button>
+        <button class="tb-btn" id="btn_area">
+          <span class="tb-btn-icon">📐</span>Area
+        </button>
+        <button class="tb-btn" id="btn_height">
+          <span class="tb-btn-icon">↕️</span>Altezza
+        </button>
+        <button class="tb-btn" id="btn_volume">
+          <span class="tb-btn-icon">📦</span>Volume
+        </button>
+        <button class="tb-btn" id="btn_profile">
+          <span class="tb-btn-icon">📊</span>Profilo sezione
+        </button>
+        <button class="tb-btn" id="btn_clip">
+          <span class="tb-btn-icon">✂️</span>Clipping
+        </button>
+        <button class="tb-btn" id="btn_clear_measures">
+          <span class="tb-btn-icon">🗑️</span>Cancella misure
+        </button>
 
       </div><!-- /tb-section misure -->
 
@@ -1158,91 +1160,48 @@
       // ----------------------------------------------------------
 
       /**
-       * Carica una nuova nuvola di punti sostituendo quella corrente.
-       * Non ricarica la pagina: rimuove la pcl dalla scena e la ricarica.
+       * Switcha nuvola di punti ricaricando la pagina con ?cloud=...&name=...
+       * Stesso pattern del postMessage "loadCloud" già presente.
+       * Il reload è l'unico approccio affidabile con questa build di Potree:
+       * removePointCloud / removeAllMeasurements non esistono nell'API.
        */
       function loadCloud(cloudDef) {
-        // Aggiorna header
-        el("header_project_name").textContent = cloudDef.name;
-        DLUSS_CONFIG.cloudPath = cloudDef.path;
-        DLUSS_CONFIG.projectName = cloudDef.name;
+        // Già sulla stessa nuvola → nessuna azione
+        if (DLUSS_CONFIG.cloudPath === cloudDef.path) return;
 
-        // Mostra overlay di caricamento
+        // Feedback visivo immediato prima del reload
+        CLOUDS.forEach(c => el(c.btnId).classList.remove("active-tool"));
+        el(cloudDef.btnId).classList.add("active-tool");
+        el("header_project_name").textContent = "Cambio nuvola...";
+
+        // Mostra overlay (sarà già visibile dopo il reload per il normale init)
         const overlay = el("dluss_loading");
         overlay.style.display = "";
         overlay.classList.remove("hidden");
-        // Reset barra progresso
-        const bar = overlay.querySelector(".loading-bar");
-        if (bar) { bar.style.animation = "none"; void bar.offsetWidth; bar.style.animation = ""; }
 
-        // Rimuovi tutte le nuvole correnti dalla scena
-        const existing = [...viewer.scene.pointclouds];
-        existing.forEach(pc => viewer.scene.removePointCloud(pc));
-        viewer.scene.removeAllMeasurements();
-        el("dluss_measure_panel").classList.remove("visible");
+        // Redirect con params — il viewer li legge in sezione 0 (URL PARAMS)
+        const url = new URL(window.location.href);
+        url.searchParams.set("cloud", cloudDef.path);
+        url.searchParams.set("name", cloudDef.name);
+        // Rimuovi stato camera precedente per evitare conflitti
+        url.searchParams.delete("position");
+        url.searchParams.delete("target");
 
-        // Evidenzia bottone attivo
-        CLOUDS.forEach(c => el(c.btnId).classList.remove("active-tool"));
-        el(cloudDef.btnId).classList.add("active-tool");
-
-        // Carica nuova nuvola
-        Potree.loadPointCloud(
-          cloudDef.path,
-          cloudDef.name,
-          e => {
-            const pointcloud = e.pointcloud;
-            const material = pointcloud.material;
-
-            material.size = 1;
-            material.pointSizeType = Potree.PointSizeType.ADAPTIVE;
-            material.shape = Potree.PointShape.CIRCLE;
-            material.activeAttributeName = "rgba";
-
-            // Fix tightBoundingBox (stesso fix del caricamento iniziale)
-            const pcoGeom = pointcloud.pcoGeometry;
-            const posAttr = pointcloud.getAttribute("position");
-            if (posAttr && Array.isArray(posAttr.range[0])) {
-              const aMin = new THREE.Vector3(...posAttr.range[0]);
-              const aMax = new THREE.Vector3(...posAttr.range[1]);
-              aMin.sub(pcoGeom.offset);
-              aMax.sub(pcoGeom.offset);
-              const tbb = new THREE.Box3(aMin, aMax);
-              pcoGeom.tightBoundingBox = tbb;
-              pcoGeom.tightBoundingSphere = tbb.getBoundingSphere(new THREE.Sphere());
-              material.heightMin = aMin.z;
-              material.heightMax = aMax.z;
-            }
-
-            viewer.scene.addPointCloud(pointcloud);
-            viewer.fitToScreen();
-
-            // Nascondi overlay
-            overlay.classList.add("hidden");
-            setTimeout(() => overlay.style.display = "none", 700);
-
-            const nPunti = pointcloud.pcoGeometry?.numPoints;
-            updateInfoBar(
-              `3DLUss — ${cloudDef.name} · ` +
-              `${nPunti ? nPunti.toLocaleString("it") + " punti · " : ""}` +
-              "Rotella = zoom · Trascina = ruota · Tasto destro = pan"
-            );
-          },
-          err => {
-            console.error("Errore switch nuvola:", err);
-            overlay.querySelector(".loading-text").textContent =
-              "⚠️ Nuvola non trovata: " + cloudDef.path;
-          }
-        );
+        window.location.href = url.toString();
       }
 
       // Bind pulsanti switch nuvola
       el("btn_cloud_acquedotto").onclick = () => loadCloud(CLOUDS[0]);
       el("btn_cloud_castello").onclick = () => loadCloud(CLOUDS[1]);
 
-      // Segna la nuvola di default come attiva
+      // Segna la nuvola di default come attiva (match path esatto o sottostringa cartella)
       (function markDefaultCloud() {
         const defaultPath = DLUSS_CONFIG.cloudPath;
-        const match = CLOUDS.find(c => defaultPath.includes(c.id) || c.path === defaultPath || defaultPath.includes(c.path.replace("./ ","")));
+        // Confronto preciso: usa il nome della cartella (ultima parte del path prima di /metadata.json)
+        const match = CLOUDS.find(c => {
+          const folder = c.path.replace("./pointclouds/", "").replace("/metadata.json", "");
+          return defaultPath === c.path || defaultPath.includes(folder);
+        });
         if (match) el(match.btnId).classList.add("active-tool");
         else el("btn_cloud_acquedotto").classList.add("active-tool"); // default
       })();
@@ -1593,7 +1552,7 @@
           fpsEl.textContent = `${currentFPS} FPS`;
           fpsEl.style.color = currentFPS >= 30 ? '#22c55e'
             : currentFPS >= 20 ? '#f5d300'
-            : '#ef4444';
+              : '#ef4444';
 
           autoAdaptQuality(currentFPS);
         }, 1000);
