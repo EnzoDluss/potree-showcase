@@ -596,7 +596,17 @@
 
     <div class="toolbar-body">
 
+      <!-- NUVOLA DI PUNTI -->
+      <div class="tb-label">Nuvola attiva</div>
+      <button class="tb-btn" id="btn_cloud_acquedotto">
+        <span class="tb-btn-icon">💧</span>Fonte Acquedotto
+      </button>
+      <button class="tb-btn" id="btn_cloud_castello">
+        <span class="tb-btn-icon">🏛️</span>Castello Fond.
+      </button>
+
       <!-- MISURE -->
+      <div class="tb-section">
       <div class="tb-label">Misure</div>
       <button class="tb-btn" id="btn_dist">
         <span class="tb-btn-icon">📏</span>Distanza
@@ -619,6 +629,8 @@
       <button class="tb-btn" id="btn_clear_measures">
         <span class="tb-btn-icon">🗑️</span>Cancella misure
       </button>
+
+      </div><!-- /tb-section misure -->
 
       <!-- VISUALIZZAZIONE -->
       <div class="tb-section">
@@ -806,6 +818,22 @@
     // ============================================================
     // INIZIALIZZAZIONE (dopo DOMContentLoaded + tutte le lib)
     // ============================================================
+    // Registro delle nuvole disponibili
+    const CLOUDS = [
+      {
+        id: "acquedotto",
+        btnId: "btn_cloud_acquedotto",
+        path: "./pointclouds/fonte-acquedotto/metadata.json",
+        name: "3DLUss — Fonte Acquedotto"
+      },
+      {
+        id: "castello",
+        btnId: "btn_cloud_castello",
+        path: "./pointclouds/castello-fondazione/metadata.json",
+        name: "3DLUss — Castello Fondazione"
+      }
+    ];
+
     window.addEventListener("load", () => {
       // ----------------------------------------------------------
       // 0. URL PARAMS — override DLUSS_CONFIG prima di qualsiasi uso
@@ -1124,6 +1152,100 @@
         el("dluss_measure_panel").classList.remove("visible");
         updateInfoBar("🗑️ Misure cancellate · 3DLUss — Rotella = zoom · Trascina = ruota");
       };
+
+      // ----------------------------------------------------------
+      // 4b. TOOLBAR — SWITCH NUVOLA
+      // ----------------------------------------------------------
+
+      /**
+       * Carica una nuova nuvola di punti sostituendo quella corrente.
+       * Non ricarica la pagina: rimuove la pcl dalla scena e la ricarica.
+       */
+      function loadCloud(cloudDef) {
+        // Aggiorna header
+        el("header_project_name").textContent = cloudDef.name;
+        DLUSS_CONFIG.cloudPath = cloudDef.path;
+        DLUSS_CONFIG.projectName = cloudDef.name;
+
+        // Mostra overlay di caricamento
+        const overlay = el("dluss_loading");
+        overlay.style.display = "";
+        overlay.classList.remove("hidden");
+        // Reset barra progresso
+        const bar = overlay.querySelector(".loading-bar");
+        if (bar) { bar.style.animation = "none"; void bar.offsetWidth; bar.style.animation = ""; }
+
+        // Rimuovi tutte le nuvole correnti dalla scena
+        const existing = [...viewer.scene.pointclouds];
+        existing.forEach(pc => viewer.scene.removePointCloud(pc));
+        viewer.scene.removeAllMeasurements();
+        el("dluss_measure_panel").classList.remove("visible");
+
+        // Evidenzia bottone attivo
+        CLOUDS.forEach(c => el(c.btnId).classList.remove("active-tool"));
+        el(cloudDef.btnId).classList.add("active-tool");
+
+        // Carica nuova nuvola
+        Potree.loadPointCloud(
+          cloudDef.path,
+          cloudDef.name,
+          e => {
+            const pointcloud = e.pointcloud;
+            const material = pointcloud.material;
+
+            material.size = 1;
+            material.pointSizeType = Potree.PointSizeType.ADAPTIVE;
+            material.shape = Potree.PointShape.CIRCLE;
+            material.activeAttributeName = "rgba";
+
+            // Fix tightBoundingBox (stesso fix del caricamento iniziale)
+            const pcoGeom = pointcloud.pcoGeometry;
+            const posAttr = pointcloud.getAttribute("position");
+            if (posAttr && Array.isArray(posAttr.range[0])) {
+              const aMin = new THREE.Vector3(...posAttr.range[0]);
+              const aMax = new THREE.Vector3(...posAttr.range[1]);
+              aMin.sub(pcoGeom.offset);
+              aMax.sub(pcoGeom.offset);
+              const tbb = new THREE.Box3(aMin, aMax);
+              pcoGeom.tightBoundingBox = tbb;
+              pcoGeom.tightBoundingSphere = tbb.getBoundingSphere(new THREE.Sphere());
+              material.heightMin = aMin.z;
+              material.heightMax = aMax.z;
+            }
+
+            viewer.scene.addPointCloud(pointcloud);
+            viewer.fitToScreen();
+
+            // Nascondi overlay
+            overlay.classList.add("hidden");
+            setTimeout(() => overlay.style.display = "none", 700);
+
+            const nPunti = pointcloud.pcoGeometry?.numPoints;
+            updateInfoBar(
+              `3DLUss — ${cloudDef.name} · ` +
+              `${nPunti ? nPunti.toLocaleString("it") + " punti · " : ""}` +
+              "Rotella = zoom · Trascina = ruota · Tasto destro = pan"
+            );
+          },
+          err => {
+            console.error("Errore switch nuvola:", err);
+            overlay.querySelector(".loading-text").textContent =
+              "⚠️ Nuvola non trovata: " + cloudDef.path;
+          }
+        );
+      }
+
+      // Bind pulsanti switch nuvola
+      el("btn_cloud_acquedotto").onclick = () => loadCloud(CLOUDS[0]);
+      el("btn_cloud_castello").onclick = () => loadCloud(CLOUDS[1]);
+
+      // Segna la nuvola di default come attiva
+      (function markDefaultCloud() {
+        const defaultPath = DLUSS_CONFIG.cloudPath;
+        const match = CLOUDS.find(c => defaultPath.includes(c.id) || c.path === defaultPath || defaultPath.includes(c.path.replace("./ ","")));
+        if (match) el(match.btnId).classList.add("active-tool");
+        else el("btn_cloud_acquedotto").classList.add("active-tool"); // default
+      })();
 
       // ----------------------------------------------------------
       // 5. TOOLBAR — VISUALIZZAZIONE
